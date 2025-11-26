@@ -1,22 +1,22 @@
 
-import { User } from '../types';
+import { User, UserPlan } from '../types';
 
 // The key used to persist the *current* session (like a session token)
 const USER_SESSION_KEY = 'hyron_auth_session';
 
 // --- MOCK CLOUD DATABASE ---
-// In a real production app, this data lives on a secure server (Firebase, AWS, Supabase).
-// We store it in memory here to simulate a backend. It is NOT stored in the browser's localStorage.
-let MOCK_CLOUD_DB = [
+// In a real production app, this data lives on a secure server.
+let MOCK_CLOUD_DB: any[] = [
   {
     id: 'user_demo_123',
     name: 'Arjun Mehta',
     email: 'demo@hyron.ai',
-    password: 'password', // In real app, this would be hashed
+    password: 'password', 
     phone: '9876543210',
     avatar: 'https://ui-avatars.com/api/?name=Arjun+Mehta&background=3b82f6&color=fff',
-    plan: 'Free',
-    freeDocsUsed: 0
+    plan: 'Sample',
+    docsCreatedThisMonth: 0,
+    lastFreeGenerationDate: null
   }
 ];
 
@@ -37,24 +37,18 @@ export const getCurrentUser = (): User | null => {
 
 // Simulated Phone OTP
 export const sendPhoneOTP = async (phone: string): Promise<boolean> => {
-  // Simulate network request to SMS gateway
   await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // In a real app, this would trigger an actual SMS.
-  // For demo purposes, we show the code in an alert.
   alert(`HYRON SECURITY\n\nYour verification code is: 8859`);
   return true;
 };
 
 export const verifyPhoneOTP = async (otp: string): Promise<boolean> => {
-  // Simulate verification check
   await new Promise(resolve => setTimeout(resolve, 1000));
   return otp === '8859';
 };
 
 // Email Login
 export const loginWithEmail = async (email: string, password: string): Promise<User> => {
-  // Simulate API call to cloud
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   const user = MOCK_CLOUD_DB.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
@@ -68,18 +62,18 @@ export const loginWithEmail = async (email: string, password: string): Promise<U
     name: user.name,
     email: user.email,
     avatar: user.avatar,
-    plan: user.plan as any,
-    freeDocsUsed: user.freeDocsUsed || 0
+    plan: user.plan as UserPlan,
+    freeDocsUsed: 0,
+    docsCreatedThisMonth: user.docsCreatedThisMonth || 0,
+    lastFreeGenerationDate: user.lastFreeGenerationDate
   };
 
-  // Persist the SESSION, not the database
   localStorage.setItem(USER_SESSION_KEY, JSON.stringify(sessionUser));
   return sessionUser;
 };
 
 // Email Signup
 export const signupWithEmail = async (data: { name: string; email: string; password: string; phone: string }): Promise<User> => {
-  // Simulate API call to create user
   await new Promise(resolve => setTimeout(resolve, 1500));
   
   if (MOCK_CLOUD_DB.find(u => u.email.toLowerCase() === data.email.toLowerCase())) {
@@ -93,11 +87,11 @@ export const signupWithEmail = async (data: { name: string; email: string; passw
     password: data.password,
     phone: data.phone,
     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=3b82f6&color=fff`,
-    plan: 'Free',
-    freeDocsUsed: 0
+    plan: 'Sample',
+    docsCreatedThisMonth: 0,
+    lastFreeGenerationDate: null
   };
 
-  // Add to in-memory cloud DB
   MOCK_CLOUD_DB.push(newUser);
   
   const sessionUser: User = {
@@ -105,8 +99,10 @@ export const signupWithEmail = async (data: { name: string; email: string; passw
     name: newUser.name,
     email: newUser.email,
     avatar: newUser.avatar,
-    plan: 'Free',
-    freeDocsUsed: 0
+    plan: 'Sample',
+    freeDocsUsed: 0,
+    docsCreatedThisMonth: 0,
+    lastFreeGenerationDate: undefined
   };
 
   localStorage.setItem(USER_SESSION_KEY, JSON.stringify(sessionUser));
@@ -115,38 +111,37 @@ export const signupWithEmail = async (data: { name: string; email: string; passw
 
 // Google Auth
 export const loginWithGoogle = async (credentials?: {name: string, email: string}): Promise<User> => {
-  // Simulate OAuth handshake
   await new Promise(resolve => setTimeout(resolve, 1500));
   
   const name = credentials?.name || 'Google User';
   const email = credentials?.email || 'user@gmail.com';
   
-  // Check our mock cloud DB
   const existingUser = MOCK_CLOUD_DB.find(u => u.email.toLowerCase() === email.toLowerCase());
   
   let user: User;
 
   if (existingUser) {
-    // Return existing user details including their current Plan
     user = {
         id: existingUser.id,
         name: existingUser.name, 
         email: existingUser.email,
         avatar: existingUser.avatar,
-        plan: existingUser.plan as any,
-        freeDocsUsed: existingUser.freeDocsUsed || 0
+        plan: existingUser.plan as UserPlan,
+        freeDocsUsed: 0,
+        docsCreatedThisMonth: existingUser.docsCreatedThisMonth || 0,
+        lastFreeGenerationDate: existingUser.lastFreeGenerationDate
     };
   } else {
-    // Register new google user in mock cloud DB
     const newUser = {
         id: 'google_' + btoa(email).substring(0, 12),
         name: name,
         email: email,
-        password: '', // No password for google auth
+        password: '', 
         phone: '',
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`,
-        plan: 'Free', // Default to Free
-        freeDocsUsed: 0
+        plan: 'Sample',
+        docsCreatedThisMonth: 0,
+        lastFreeGenerationDate: null
     };
     
     MOCK_CLOUD_DB.push(newUser);
@@ -156,8 +151,10 @@ export const loginWithGoogle = async (credentials?: {name: string, email: string
         name: newUser.name,
         email: newUser.email,
         avatar: newUser.avatar,
-        plan: 'Free',
-        freeDocsUsed: 0
+        plan: 'Sample',
+        freeDocsUsed: 0,
+        docsCreatedThisMonth: 0,
+        lastFreeGenerationDate: undefined
     };
   }
 
@@ -173,15 +170,13 @@ export const logout = async (): Promise<void> => {
 export const upgradeUserPlan = (plan: 'Starter' | 'Pro' | 'Lifetime') => {
   const user = getCurrentUser();
   if (user) {
-    const updatedUser = { ...user, plan };
+    const updatedUser: User = { ...user, plan };
     
-    // Update session
     localStorage.setItem(USER_SESSION_KEY, JSON.stringify(updatedUser));
     
-    // Update Cloud DB
     const dbUserIndex = MOCK_CLOUD_DB.findIndex(u => u.id === user.id);
     if (dbUserIndex >= 0) {
-        (MOCK_CLOUD_DB[dbUserIndex] as any).plan = plan;
+        MOCK_CLOUD_DB[dbUserIndex].plan = plan;
     }
     
     return updatedUser;
@@ -189,16 +184,67 @@ export const upgradeUserPlan = (plan: 'Starter' | 'Pro' | 'Lifetime') => {
   return null;
 };
 
-export const incrementFreeDocsUsage = () => {
+export const checkUsageEligibility = (user: User): { allowed: boolean; reason?: string } => {
+  if (user.plan === 'Lifetime') return { allowed: true };
+
+  const LIMITS = {
+    'Sample': 1, // 1 per 30 days
+    'Starter': 5, // per month
+    'Pro': 20, // per month
+  };
+
+  if (user.plan === 'Sample') {
+    if (user.lastFreeGenerationDate) {
+      const lastDate = new Date(user.lastFreeGenerationDate);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - lastDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      
+      // Limit to 1 per 30 days (approx 1 month)
+      if (diffDays < 30) {
+        return { 
+          allowed: false, 
+          reason: `Sample limit reached. You can generate another free NDA in ${30 - diffDays} days.` 
+        };
+      }
+    }
+    return { allowed: true };
+  }
+
+  // Paid Plans (Monthly limits)
+  const limit = LIMITS[user.plan] || 0;
+  if (user.docsCreatedThisMonth >= limit) {
+    return { 
+      allowed: false, 
+      reason: `Monthly limit reached (${user.docsCreatedThisMonth}/${limit}). Upgrade for more.` 
+    };
+  }
+
+  return { allowed: true };
+};
+
+export const recordGenerationUsage = () => {
   const user = getCurrentUser();
-  if (user && user.plan === 'Free') {
-    const updatedUser = { ...user, freeDocsUsed: (user.freeDocsUsed || 0) + 1 };
+  if (user) {
+    const updatedUser = { ...user };
+    const now = new Date().toISOString();
+
+    if (user.plan === 'Sample') {
+      updatedUser.lastFreeGenerationDate = now;
+    } else {
+      updatedUser.docsCreatedThisMonth = (user.docsCreatedThisMonth || 0) + 1;
+    }
     
     localStorage.setItem(USER_SESSION_KEY, JSON.stringify(updatedUser));
     
     const dbUserIndex = MOCK_CLOUD_DB.findIndex(u => u.id === user.id);
     if (dbUserIndex >= 0) {
-        (MOCK_CLOUD_DB[dbUserIndex] as any).freeDocsUsed = updatedUser.freeDocsUsed;
+        const dbUser = MOCK_CLOUD_DB[dbUserIndex];
+        if (user.plan === 'Sample') {
+          dbUser.lastFreeGenerationDate = now;
+        } else {
+          dbUser.docsCreatedThisMonth = (dbUser.docsCreatedThisMonth || 0) + 1;
+        }
     }
     return updatedUser;
   }

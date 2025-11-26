@@ -6,13 +6,13 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Pricing from './components/Pricing';
 import { generateNDADocument } from './services/geminiService';
-import { loginWithGoogle, logout, getCurrentUser, upgradeUserPlan, incrementFreeDocsUsage } from './services/authService';
-import { saveDocument, getUserDocuments, deleteDocument } from './services/storageService';
+import { loginWithGoogle, logout, getCurrentUser, upgradeUserPlan, checkUsageEligibility, recordGenerationUsage } from './services/authService';
+import { getUserDocuments, deleteDocument } from './services/storageService';
 import { NDAFormData, INITIAL_FORM_DATA, User, SavedDocument, UserPlan } from './types';
 import PaymentModal from './components/PaymentModal';
 
 type ViewState = 'login' | 'dashboard' | 'create' | 'view' | 'pricing';
-type AccessLevel = 'locked' | 'view-only' | 'full';
+type AccessLevel = 'locked' | 'watermarked' | 'full';
 
 const App: React.FC = () => {
   // Auth State
@@ -67,7 +67,7 @@ const App: React.FC = () => {
     if (pendingPlanSelection) {
       setShowPlanPayment(pendingPlanSelection);
       setPendingPlanSelection(null);
-      setView('pricing'); // Stay on pricing/dashboard view to show modal
+      setView('pricing'); 
     } else {
       setView('dashboard');
     }
@@ -84,26 +84,28 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    setIsGenerating(true);
     setError(null);
     
-    // Default locked
-    let access: AccessLevel = 'locked';
+    if (!user) {
+      setView('login');
+      return;
+    }
 
-    if (user) {
-      if (['Starter', 'Pro', 'Lifetime'].includes(user.plan)) {
-        // Paid plans always get full access
-        access = 'full';
-      } else if (user.plan === 'Free') {
-        // Free tier logic: 1 free doc per month (simulated as total usage here)
-        if (user.freeDocsUsed < 1) {
-          access = 'view-only'; // Can see text, but cannot download PDF
-          const updatedUser = incrementFreeDocsUsage();
-          if (updatedUser) setUser(updatedUser);
-        } else {
-          access = 'locked'; // Quota exceeded
-        }
-      }
+    // Check quota limits
+    const eligibility = checkUsageEligibility(user);
+    if (!eligibility.allowed) {
+      setError(eligibility.reason || "Limit reached");
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    // Determine Access Level based on Plan
+    let access: AccessLevel = 'locked';
+    if (['Starter', 'Pro', 'Lifetime'].includes(user.plan)) {
+      access = 'full';
+    } else if (user.plan === 'Sample') {
+      access = 'watermarked';
     }
     
     setDocAccessLevel(access);
@@ -111,6 +113,11 @@ const App: React.FC = () => {
     try {
       const result = await generateNDADocument(formData);
       setNdaResult(result);
+      
+      // Update usage stats
+      const updatedUser = recordGenerationUsage();
+      if (updatedUser) setUser(updatedUser);
+
       setView('view');
     } catch (err) {
       setError("We encountered an issue connecting to HYRON's core. Please verify your API key and network connection.");
@@ -119,33 +126,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    if (user && ndaResult) {
-      // Logic adjustment: saving a "locked" doc is fine, but when opening it later, 
-      // we need to respect if it was paid for. For now, we assume saving assumes ownership 
-      // if access was > locked.
-      const savedDoc = saveDocument(user.id, formData, ndaResult);
-      // Mark as paid in storage if full access was granted
-      if (docAccessLevel === 'full') {
-        // In a real app we'd update the doc record
-      }
-      loadDocuments();
-    }
-  };
-
   const handleOpenDoc = (doc: SavedDocument) => {
     setFormData(doc.formData);
     setNdaResult(doc.content);
-    // If opening a saved doc, we assume full access if they are on a paid plan
-    // Or if the doc was previously paid for (needs isPaid flag in doc).
-    // For simplicity in this demo:
+    
+    // Restore access rights based on current plan
     if (user && ['Starter', 'Pro', 'Lifetime'].includes(user.plan)) {
         setDocAccessLevel('full');
     } else {
-        // If free user opens old doc, they might have used their free credit.
-        // Let's grant full access to saved documents for simplicity, 
-        // assuming they unlocked it before saving.
-        setDocAccessLevel('full');
+        // For sample users opening old docs, keep them watermarked/locked as per their tier
+        // Assuming previously generated docs retain "watermarked" view if they are on Sample
+        setDocAccessLevel('watermarked');
     }
     setView('view');
   };
@@ -181,14 +172,13 @@ const App: React.FC = () => {
   };
 
   const handleSelectPlan = (plan: UserPlan, price: number) => {
-    if (plan === 'Free') {
+    if (plan === 'Sample') {
       if (!user) setView('login');
       else navigateToDashboard();
       return;
     }
 
     if (!user) {
-      // User needs to login first, then we show payment
       setPendingPlanSelection({ plan, price });
       setView('login');
     } else {
@@ -223,7 +213,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
       
-      {/* Payment Modal for Plans */}
       {showPlanPayment && (
         <PaymentModal
           amount={showPlanPayment.price}
@@ -233,7 +222,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Background Decor */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-900/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-3xl"></div>
@@ -241,7 +229,6 @@ const App: React.FC = () => {
 
       <div className="relative z-10 flex flex-col min-h-screen">
         
-        {/* Navigation */}
         <nav className="w-full border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
            <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
               <div 
@@ -255,7 +242,6 @@ const App: React.FC = () => {
               </div>
               
               <div className="flex items-center space-x-6">
-                 {/* Public Nav Items */}
                  <button 
                   onClick={() => setView('pricing')}
                   className={`text-sm font-medium transition-colors ${view === 'pricing' ? 'text-blue-400' : 'text-slate-400 hover:text-white'}`}
@@ -284,9 +270,9 @@ const App: React.FC = () => {
                          <span className="text-xs font-semibold text-white">{user.name}</span>
                          <span className="text-[10px] text-blue-400 uppercase tracking-wider flex items-center gap-1">
                             {user.plan}
-                            {user.plan === 'Free' && (
-                                <span className={`text-[9px] px-1 rounded ${user.freeDocsUsed < 1 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                    {Math.max(0, 1 - (user.freeDocsUsed || 0))} left
+                            {user.plan === 'Sample' && (
+                                <span className="text-[9px] px-1 bg-amber-500/20 text-amber-400 rounded">
+                                   Trial
                                 </span>
                             )}
                          </span>
@@ -311,12 +297,12 @@ const App: React.FC = () => {
            </div>
         </nav>
 
-        {/* Main Content Area */}
         <main className="flex-grow flex flex-col items-center justify-center p-4 md:p-8">
           
           {error && (
             <div className="w-full max-w-xl bg-red-500/10 border border-red-500/50 text-red-200 px-6 py-4 rounded-lg mb-8 text-center animate-pulse">
-              {error}
+              <p className="font-bold">Access Restricted</p>
+              <p className="text-sm">{error}</p>
             </div>
           )}
 
@@ -356,7 +342,6 @@ const App: React.FC = () => {
             <NDADisplay 
               content={ndaResult} 
               onReset={handleReset}
-              onSave={user ? handleSave : undefined}
               accessLevel={docAccessLevel}
               onPaymentSuccess={handleDocPaymentSuccess}
             />

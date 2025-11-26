@@ -5,27 +5,25 @@ import PaymentModal from './PaymentModal';
 interface NDADisplayProps {
   content: string;
   onReset: () => void;
-  onSave?: () => void;
-  accessLevel: 'locked' | 'view-only' | 'full'; // 'locked' = blur, 'view-only' = see text no pdf, 'full' = everything
+  accessLevel: 'locked' | 'watermarked' | 'full'; 
   onPaymentSuccess?: () => void;
 }
 
-// Add type definition for jspdf
 declare global {
   interface Window {
     jspdf: any;
+    docx: any;
   }
 }
 
-const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, accessLevel, onPaymentSuccess }) => {
-  const [justSaved, setJustSaved] = useState(false);
+const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, onPaymentSuccess }) => {
   const [showPayment, setShowPayment] = useState(false);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
 
   const PRICE_INR = 200;
 
   const isLocked = accessLevel === 'locked';
-  const isViewOnly = accessLevel === 'view-only';
+  const isWatermarked = accessLevel === 'watermarked';
   const isFull = accessLevel === 'full';
 
   const handleCopy = () => {
@@ -38,7 +36,7 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
   };
 
   const generatePDF = (): any => {
-     const { jsPDF } = window.jspdf;
+    const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
     // Set font
@@ -46,6 +44,7 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
     doc.setFontSize(12);
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     const maxLineWidth = pageWidth - (margin * 2);
 
@@ -65,18 +64,35 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
     doc.setFont("times", "normal");
     
     // Page handling loop
-    const pageHeight = doc.internal.pageSize.getHeight();
+    let pageNumber = 1;
     
+    // Function to add watermark
+    const addWatermark = () => {
+      if (isWatermarked) {
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.3 })); // Increased opacity for visibility
+        doc.setFont("helvetica", "bold"); // Bold font
+        doc.setFontSize(60); // Larger font
+        doc.setTextColor(100, 100, 100); // Darker grey
+        doc.text("MADE WITH HYRON AI", pageWidth / 2, pageHeight / 2, { align: "center", angle: 45, baseline: 'middle' });
+        doc.restoreGraphicsState();
+      }
+    };
+
+    addWatermark();
+
     splitText.forEach((line: string) => {
       if (cursorY > pageHeight - 20) {
         doc.addPage();
+        pageNumber++;
+        addWatermark();
         cursorY = 20;
       }
       doc.text(line, margin, cursorY);
       cursorY += 6; // Line height
     });
 
-    // Add footer
+    // Add footer to all pages
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -88,15 +104,78 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
     return doc;
   }
 
-  const handleDownload = () => {
-    if (!isFull) {
-      // If view-only, they still need to pay for PDF
+  const generateDOCX = () => {
+    if (!window.docx) return;
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Header, Footer } = window.docx;
+
+    const sections: any[] = [{
+      properties: {},
+      children: [
+        new Paragraph({
+          text: "NON-DISCLOSURE AGREEMENT",
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 300 },
+        }),
+        ...content.split('\n').map((line: string) => 
+          new Paragraph({
+            children: [new TextRun(line)],
+            spacing: { after: 120 },
+          })
+        )
+      ],
+    }];
+
+    // If watermarked, add a header stating it's a sample
+    if (isWatermarked) {
+       sections[0].headers = {
+        default: new Header({
+            children: [
+                new Paragraph({
+                    children: [
+                        new TextRun({
+                            text: "MADE WITH HYRON AI",
+                            bold: true,
+                            color: "808080", // Dark grey
+                            size: 64, // 32pt font size
+                        }),
+                    ],
+                    alignment: AlignmentType.CENTER,
+                }),
+            ],
+        }),
+       };
+    }
+
+    const doc = new Document({
+      sections: sections,
+    });
+
+    Packer.toBlob(doc).then((blob: Blob) => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = isWatermarked ? "HYRON_NDA_Sample.docx" : "HYRON_NDA.docx";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
+  };
+
+  const handleDownloadPDF = () => {
+    if (isLocked) {
       setShowPayment(true);
       return;
     }
-
     const doc = generatePDF();
-    doc.save("HYRON_NDA_Legal_Document.pdf");
+    doc.save(isWatermarked ? "HYRON_NDA_Sample.pdf" : "HYRON_NDA_Legal_Document.pdf");
+  };
+
+  const handleDownloadDOCX = () => {
+    if (isLocked) {
+      setShowPayment(true);
+      return;
+    }
+    generateDOCX();
   };
 
   const handleSaveToDrive = () => {
@@ -106,20 +185,10 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
     }
     
     setIsSavingToDrive(true);
-    
-    // Simulate API call to Google Drive
     setTimeout(() => {
       setIsSavingToDrive(false);
       alert("Successfully saved 'HYRON_NDA_Legal_Document.pdf' to your Google Drive.");
     }, 2000);
-  };
-
-  const handleSave = () => {
-    if (onSave) {
-      onSave();
-      setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 3000);
-    }
   };
 
   return (
@@ -128,7 +197,7 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
       {showPayment && onPaymentSuccess && (
         <PaymentModal 
           amount={PRICE_INR} 
-          description={isViewOnly ? "Upgrade to download PDF & Commercial Use" : "Unlock Document"}
+          description={isWatermarked ? "Upgrade to remove watermark" : "Unlock Document"}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             onPaymentSuccess();
@@ -142,9 +211,9 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
         <div className="text-center xl:text-left">
            <h2 className="text-2xl font-bold text-white tracking-tight">Your Generated NDA</h2>
            <p className="text-slate-400 text-sm">
-             {isFull ? "Document Unlocked. Ready for download." : 
-              isViewOnly ? "Free View Access. Text Copy Enabled." : 
-              "Preview Mode. Unlock to download PDF."}
+             {isFull ? "Professional License. All formats unlocked." : 
+              isWatermarked ? "Sample Mode. PDF & DOCX Watermarked." : 
+              "Preview Mode. Unlock to download."}
            </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">
@@ -155,17 +224,6 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
             New Draft
           </button>
           
-          {onSave && (
-            <button 
-              onClick={handleSave}
-              disabled={justSaved}
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all flex items-center ${justSaved ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-slate-800 text-emerald-400 border-emerald-500/30 hover:bg-slate-700 hover:border-emerald-500/50'}`}
-            >
-              {justSaved ? "Saved!" : "Save to Account"}
-            </button>
-          )}
-
-          {/* Copy Button (Available if not locked) */}
           {!isLocked && (
              <button 
                 onClick={handleCopy}
@@ -175,57 +233,48 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
               </button>
           )}
 
-          {isFull ? (
+          {!isLocked && (
             <>
-               {/* Google Drive Button */}
-              <button 
-                onClick={handleSaveToDrive}
-                disabled={isSavingToDrive}
-                className="px-4 py-2 rounded-lg bg-slate-800 text-white border border-slate-600 hover:bg-slate-700 text-sm font-medium transition-all flex items-center"
+              {/* DOCX Button */}
+              <button
+                onClick={handleDownloadDOCX}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center border ${isFull ? 'bg-slate-800 text-white border-slate-600 hover:bg-slate-700' : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-300'}`}
+                title="Download Word Doc"
               >
-                {isSavingToDrive ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </span>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 mr-2" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                      <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                      <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-                      <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-                      <path d="m43.65 25 13.75 23.8 13.75-23.8h-27.5z" fill="#00832d"/>
-                      <path d="m59.8 53h-27.5l13.75 23.8z" fill="#2684fc"/>
-                      <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3h-13.75l13.75 23.8z" fill="#ffba00"/>
-                    </svg>
-                    Save to Drive
-                  </>
-                )}
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {isFull ? "DOCX" : "DOCX (Sample)"}
               </button>
 
               <button 
-                onClick={handleDownload}
+                onClick={handleDownloadPDF}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/20 text-sm font-medium transition-all flex items-center"
               >
                 Download PDF
               </button>
             </>
-          ) : (
+          )}
+
+          {isFull && (
+             <button 
+                onClick={handleSaveToDrive}
+                disabled={isSavingToDrive}
+                className="px-4 py-2 rounded-lg bg-slate-800 text-white border border-slate-600 hover:bg-slate-700 text-sm font-medium transition-all flex items-center"
+             >
+                {isSavingToDrive ? 'Saving...' : 'Drive'}
+             </button>
+          )}
+
+          {isLocked && (
             <button 
               onClick={() => setShowPayment(true)}
-              className={`px-6 py-2 rounded-lg bg-gradient-to-r ${isViewOnly ? 'from-slate-700 to-slate-800 border border-amber-500/50 text-amber-500' : 'from-amber-500 to-orange-600 text-white'} shadow-lg text-sm font-bold transition-all flex items-center ${isLocked ? 'animate-pulse' : 'hover:bg-slate-700'}`}
+              className="px-6 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg text-sm font-bold transition-all flex items-center animate-pulse"
             >
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                {isViewOnly ? (
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                )}
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
-              {isViewOnly ? "Get PDF (₹200)" : `Unlock (₹${PRICE_INR})`}
+              Unlock (₹{PRICE_INR})
             </button>
           )}
         </div>
@@ -243,9 +292,9 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                  </svg>
                </div>
-               <h3 className="text-xl font-bold text-white mb-2">Free Limit Reached</h3>
+               <h3 className="text-xl font-bold text-white mb-2">Limit Reached</h3>
                <p className="text-slate-400 text-sm mb-6">
-                 You have used your 1 free monthly NDA. Pay a small fee to unlock this document and download the PDF.
+                 Your plan limit has been reached. Upgrade to generate more professional documents.
                </p>
                <button 
                  onClick={() => setShowPayment(true)}
@@ -268,16 +317,15 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, acces
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-gray-100 to-transparent pointer-events-none z-10"></div>
       </div>
 
-      {/* Disclaimer Section below document */}
       <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start space-x-3">
          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
          </svg>
          <div>
-            <h4 className="text-sm font-semibold text-amber-500 mb-1">Legal Disclaimer (Indian Context)</h4>
+            <h4 className="text-sm font-semibold text-amber-500 mb-1">Legal Disclaimer</h4>
             <p className="text-xs text-amber-200/80 leading-relaxed">
-              HYRON AI is an automated tool. While this document is drafted to align with the <strong>Indian Contract Act, 1872</strong>, it is generated by AI and may contain errors. 
-              This document <strong>does not constitute legal advice</strong>. We strongly recommend reviewing this document with a qualified advocate in India before signing.
+              This document is generated by AI under the <strong>Indian Contract Act, 1872</strong>. 
+              It does not constitute legal advice. Review with a qualified advocate before signing.
             </p>
          </div>
       </div>

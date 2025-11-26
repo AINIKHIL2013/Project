@@ -35,7 +35,7 @@ export const INITIAL_FORM_DATA: NDAFormData = {
   }
 };
 
-export type UserPlan = 'Free' | 'Starter' | 'Pro' | 'Lifetime';
+export type UserPlan = 'Sample' | 'Starter' | 'Pro' | 'Lifetime';
 
 export interface User {
   id: string;
@@ -43,7 +43,9 @@ export interface User {
   email: string;
   avatar: string;
   plan: UserPlan;
-  freeDocsUsed: number;
+  freeDocsUsed: number; // Legacy counter
+  docsCreatedThisMonth: number;
+  lastFreeGenerationDate?: string; // ISO Date string
 }
 
 export interface SavedDocument {
