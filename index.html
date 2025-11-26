@@ -4,10 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HYRON AI</title>
+    <!-- Tailwind CSS (CDN for simplicity, though npm is recommended for production) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <!-- External Libraries (Keeping these as CDNs to match existing logic) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
+    
     <script>
       tailwind.config = {
         theme: {
@@ -56,9 +60,11 @@
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
   }
 }
@@ -66,5 +72,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <!-- CRITICAL: This line tells Vite where your React app starts -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
