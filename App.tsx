@@ -7,7 +7,7 @@ import Dashboard from './components/Dashboard';
 import Pricing from './components/Pricing';
 import { generateNDADocument } from './services/geminiService';
 import { loginWithGoogle, logout, getCurrentUser, upgradeUserPlan, checkUsageEligibility, recordGenerationUsage } from './services/authService';
-import { getUserDocuments, deleteDocument } from './services/storageService';
+import { saveDocument, getUserDocuments, deleteDocument } from './services/storageService';
 import { NDAFormData, INITIAL_FORM_DATA, User, SavedDocument, UserPlan } from './types';
 import PaymentModal from './components/PaymentModal';
 
@@ -123,6 +123,13 @@ const App: React.FC = () => {
       setError("We encountered an issue connecting to HYRON's core. Please verify your API key and network connection.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (user && ndaResult) {
+      saveDocument(user.id, formData, ndaResult);
+      loadDocuments();
     }
   };
 
@@ -342,6 +349,7 @@ const App: React.FC = () => {
             <NDADisplay 
               content={ndaResult} 
               onReset={handleReset}
+              onSave={user ? handleSave : undefined}
               accessLevel={docAccessLevel}
               onPaymentSuccess={handleDocPaymentSuccess}
             />

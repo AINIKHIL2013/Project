@@ -5,6 +5,7 @@ import PaymentModal from './PaymentModal';
 interface NDADisplayProps {
   content: string;
   onReset: () => void;
+  onSave?: () => void;
   accessLevel: 'locked' | 'watermarked' | 'full'; 
   onPaymentSuccess?: () => void;
 }
@@ -16,7 +17,8 @@ declare global {
   }
 }
 
-const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, onPaymentSuccess }) => {
+const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, onSave, accessLevel, onPaymentSuccess }) => {
+  const [justSaved, setJustSaved] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
 
@@ -70,11 +72,11 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
     const addWatermark = () => {
       if (isWatermarked) {
         doc.saveGraphicsState();
-        doc.setGState(new doc.GState({ opacity: 0.3 })); // Increased opacity for visibility
-        doc.setFont("helvetica", "bold"); // Bold font
-        doc.setFontSize(60); // Larger font
-        doc.setTextColor(100, 100, 100); // Darker grey
-        doc.text("MADE WITH HYRON AI", pageWidth / 2, pageHeight / 2, { align: "center", angle: 45, baseline: 'middle' });
+        doc.setGState(new doc.GState({ opacity: 0.1 }));
+        doc.setFontSize(50);
+        doc.setTextColor(150, 150, 150);
+        // Add multiple watermarks for better coverage or one large one
+        doc.text("HYRON AI", pageWidth / 2, pageHeight / 2, { align: "center", angle: 45, baseline: 'middle' });
         doc.restoreGraphicsState();
       }
     };
@@ -108,7 +110,7 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
     if (!window.docx) return;
     const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Header, Footer } = window.docx;
 
-    const sections: any[] = [{
+    const sections = [{
       properties: {},
       children: [
         new Paragraph({
@@ -128,16 +130,16 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
 
     // If watermarked, add a header stating it's a sample
     if (isWatermarked) {
-       sections[0].headers = {
+       (sections[0] as any).headers = {
         default: new Header({
             children: [
                 new Paragraph({
                     children: [
                         new TextRun({
-                            text: "MADE WITH HYRON AI",
+                            text: "HYRON AI - SAMPLE DOCUMENT",
                             bold: true,
-                            color: "808080", // Dark grey
-                            size: 64, // 32pt font size
+                            color: "CCCCCC",
+                            size: 24,
                         }),
                     ],
                     alignment: AlignmentType.CENTER,
@@ -191,6 +193,14 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
     }, 2000);
   };
 
+  const handleSave = () => {
+    if (onSave) {
+      onSave();
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
+    }
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col h-full animate-fadeIn relative">
       
@@ -212,7 +222,7 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
            <h2 className="text-2xl font-bold text-white tracking-tight">Your Generated NDA</h2>
            <p className="text-slate-400 text-sm">
              {isFull ? "Professional License. All formats unlocked." : 
-              isWatermarked ? "Sample Mode. PDF & DOCX Watermarked." : 
+              isWatermarked ? "Sample Mode. PDF & DOCX Watermarked. Upgrade for clean copy." : 
               "Preview Mode. Unlock to download."}
            </p>
         </div>
@@ -224,6 +234,16 @@ const NDADisplay: React.FC<NDADisplayProps> = ({ content, onReset, accessLevel, 
             New Draft
           </button>
           
+          {onSave && (
+            <button 
+              onClick={handleSave}
+              disabled={justSaved}
+              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all flex items-center ${justSaved ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-slate-800 text-emerald-400 border-emerald-500/30 hover:bg-slate-700 hover:border-emerald-500/50'}`}
+            >
+              {justSaved ? "Saved!" : "Save to Account"}
+            </button>
+          )}
+
           {!isLocked && (
              <button 
                 onClick={handleCopy}
